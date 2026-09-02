@@ -15,5 +15,23 @@
       "provider": "network"
     },
     "image": "/data/images/manual_20260902_184321.jpg"
+  },
+  {
+    "id": "issue_1788355917",
+    "timestamp": "2026-09-02T19:01:59.435092",
+    "type": "pothole_or_bump",
+    "severity": "medium",
+    "magnitude": 3.68,
+    "z_accel": 3.61,
+    "gps": {
+      "lat": 26.893266346250275,
+      "lng": 75.79010236121448,
+      "speed": 0.0,
+      "altitude": 1680.6575392784882,
+      "accuracy": 383.52023,
+      "provider": "gps"
+    },
+    "image": "/data/images/bump_20260902_190157.jpg",
+    "battery": 18.0
   }
 ]
