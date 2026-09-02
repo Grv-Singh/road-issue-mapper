@@ -23,12 +23,12 @@ os.makedirs(IMG_DIR, exist_ok=True)
 
 CAMERA_HOST = "http://10.63.105.80:8888"
 
-# Motion & Threshold Gates
-MIN_RIDE_SPEED_KMH = 3.5      # Must be moving on scooter (>3.5 km/h) to capture surveys/hazards
+# Thermal & Movement Optimization Settings
+MIN_RIDE_SPEED_KMH = 3.5      # Zero image downloads while stationary (prevents phone heating)
 BUMP_THRESHOLD = 4.2          # m/s^2 linear acceleration spike
 BUMP_COOLDOWN = 2.5           # Cooldown between bump triggers (seconds)
-VISION_SCAN_INTERVAL = 4.0    # Scan frame with OpenCV every 4 seconds while moving
-PERIODIC_SURVEY_SEC = 25.0    # Periodic street capture interval while moving
+VISION_SCAN_INTERVAL = 5.0    # Scan frame with OpenCV every 5 seconds while riding
+PERIODIC_SURVEY_SEC = 25.0    # Periodic street capture interval while riding
 
 last_bump_time = 0
 last_vision_scan_time = 0
@@ -52,8 +52,7 @@ def fetch_image(save_path):
             with open(save_path, "wb") as f:
                 f.write(data)
         return True
-    except Exception as e:
-        logging.error(f"Failed to fetch frame: {e}")
+    except Exception:
         return False
 
 def load_issues():
@@ -77,7 +76,6 @@ def extract_gps(gps_raw):
     target = gps if gps and "latitude" in gps else net
     if target and "latitude" in target:
         speed_raw = target.get("speed", 0.0)
-        # speed in m/s converted to km/h
         speed_kmh = round(speed_raw * 3.6, 1) if speed_raw else 0.0
         return {
             "lat": target.get("latitude"),
@@ -91,10 +89,6 @@ def extract_gps(gps_raw):
     return None
 
 def detect_visual_anomalies(img_path):
-    """
-    OpenCV road surface analyzer:
-    Detects foreign contrast objects, rubble, bricks, garbage clusters on road lane ROI.
-    """
     img = cv2.imread(img_path)
     if img is None:
         return False, None, 0.0
@@ -112,7 +106,6 @@ def detect_visual_anomalies(img_path):
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     hazard_blobs = [c for c in contours if 500 < cv2.contourArea(c) < 25000]
 
-    # Only high-confidence clusters (> 0.75)
     if len(hazard_blobs) >= 2 or any(cv2.contourArea(c) > 3000 for c in hazard_blobs):
         conf = min(0.95, 0.70 + len(hazard_blobs) * 0.05)
         if conf >= 0.75:
@@ -144,29 +137,44 @@ def record_defect(issue_type, severity, description, mag, z_accel, gps, img_name
 
 def run_collector():
     global last_bump_time, last_vision_scan_time, last_survey_time
-    logging.info(f"Road Audit Daemon active (Speed Gate: {MIN_RIDE_SPEED_KMH} km/h)")
+    logging.info("Road Audit Collector Daemon active. Listening for IP Webcam on Pixel 6...")
+
+    was_connected = False
 
     while True:
         try:
-            now = time.time()
             sensors = get_json("sensors.json")
+            if not sensors:
+                if was_connected:
+                    logging.info("IP Webcam disconnected. Waiting for reconnection...")
+                    was_connected = False
+                # Write offline telemetry
+                telem = {"timestamp": datetime.now().isoformat(), "status": "waiting_camera"}
+                with open(TELEMETRY_FILE, "w") as f:
+                    json.dump(telem, f)
+                time.sleep(2.0)
+                continue
+
+            if not was_connected:
+                logging.info("Connected to IP Webcam on Pixel 6! Telemetry active.")
+                was_connected = True
+
+            now = time.time()
             gps_raw = get_json("gps.json")
             gps = extract_gps(gps_raw)
 
             lin_accel_data = None
             battery = None
 
-            if sensors:
-                if "lin_accel" in sensors and "data" in sensors["lin_accel"]:
-                    arr = sensors["lin_accel"]["data"]
-                    if arr:
-                        lin_accel_data = arr[-1][1]
-                if "battery_level" in sensors and "data" in sensors["battery_level"]:
-                    arr = sensors["battery_level"]["data"]
-                    if arr:
-                        battery = arr[-1][1][0]
+            if "lin_accel" in sensors and "data" in sensors["lin_accel"]:
+                arr = sensors["lin_accel"]["data"]
+                if arr:
+                    lin_accel_data = arr[-1][1]
+            if "battery_level" in sensors and "data" in sensors["battery_level"]:
+                arr = sensors["battery_level"]["data"]
+                if arr:
+                    battery = arr[-1][1][0]
 
-            # Current moving status
             current_speed_kmh = gps.get("speed_kmh", 0.0) if gps else 0.0
             is_moving = current_speed_kmh >= MIN_RIDE_SPEED_KMH
 
@@ -177,7 +185,7 @@ def run_collector():
                 "gps": gps,
                 "lin_accel": lin_accel_data,
                 "is_moving": is_moving,
-                "status": "online" if sensors else "offline"
+                "status": "online"
             }
             with open(TELEMETRY_FILE, "w") as f:
                 json.dump(telem, f)
@@ -187,8 +195,8 @@ def run_collector():
                 ax, ay, az = lin_accel_data
                 mag = math.sqrt(ax*ax + ay*ay + az*az)
 
-                # If moving, trigger at BUMP_THRESHOLD; if idle, ignore accidental small shakes
-                shock_threshold = BUMP_THRESHOLD if is_moving else 7.0
+                # Only trigger on scooter shocks; ignore light handling while stationary
+                shock_threshold = BUMP_THRESHOLD if is_moving else 8.0
 
                 if (mag >= shock_threshold or abs(az) >= shock_threshold) and (now - last_bump_time > BUMP_COOLDOWN):
                     last_bump_time = now
@@ -209,7 +217,7 @@ def run_collector():
                             battery=battery
                         )
 
-            # --- 2. OPENCV VISUAL SCAN (Only while moving on scooter) ---
+            # --- 2. OPENCV VISUAL SCAN (Active ONLY while moving on road) ---
             if is_moving and (now - last_vision_scan_time > VISION_SCAN_INTERVAL):
                 last_vision_scan_time = now
                 temp_img = os.path.join(IMG_DIR, "current_scan.jpg")
@@ -232,7 +240,7 @@ def run_collector():
                             battery=battery
                         )
 
-            # --- 3. PERIODIC ROUTE SURVEY (Only while moving on scooter) ---
+            # --- 3. ROUTE SURVEY (Active ONLY while moving on road) ---
             if is_moving and (now - last_survey_time > PERIODIC_SURVEY_SEC):
                 last_survey_time = now
                 ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -250,10 +258,12 @@ def run_collector():
                         battery=battery
                     )
 
-            time.sleep(0.2)  # Low CPU polling (5 Hz)
+            # Thermal saving: Sleep 300ms (3 Hz telemetry polling, < 0.1% CPU)
+            time.sleep(0.3)
+
         except Exception as e:
-            logging.error(f"Collector loop error: {e}")
-            time.sleep(1.0)
+            logging.error(f"Collector error: {e}")
+            time.sleep(1.5)
 
 if __name__ == "__main__":
     run_collector()

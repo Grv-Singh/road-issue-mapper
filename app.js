@@ -3,10 +3,10 @@ let markers = [];
 let issuesData = [];
 
 const TYPE_CONFIG = {
-  pothole_shock: { label: 'POTHOLE JOLT', color: '#ef4444', icon: '⚠️' },
-  garbage_or_debris: { label: 'GARBAGE / DEBRIS', color: '#f97316', icon: '🗑️' },
-  manual_flag: { label: 'MANUAL FLAG', color: '#a855f7', icon: '📸' },
-  route_audit: { label: 'STREET SURVEY', color: '#3b82f6', icon: '📍' }
+  pothole_shock: { label: 'POTHOLE JOLT', color: '#ef4444', badgeBg: 'rgba(239, 68, 68, 0.15)' },
+  garbage_or_debris: { label: 'GARBAGE / DEBRIS', color: '#f97316', badgeBg: 'rgba(249, 115, 22, 0.15)' },
+  manual_flag: { label: 'MANUAL FLAG', color: '#a855f7', badgeBg: 'rgba(168, 85, 247, 0.15)' },
+  route_audit: { label: 'STREET SURVEY', color: '#38bdf8', badgeBg: 'rgba(56, 189, 248, 0.15)' }
 };
 
 function initMap() {
@@ -38,7 +38,7 @@ async function fetchTelemetry() {
     }
 
     if (data.gps && data.gps.lat && data.gps.lng) {
-      document.getElementById('gpsStatus').textContent = `Locked (${data.gps.provider})`;
+      document.getElementById('gpsStatus').textContent = `Locked (${data.gps.provider || 'GPS'})`;
       document.getElementById('coords').textContent = `${data.gps.lat.toFixed(5)}, ${data.gps.lng.toFixed(5)}`;
       const speedKmH = (data.gps.speed * 3.6).toFixed(1);
       document.getElementById('speed').textContent = `${speedKmH} km/h`;
@@ -77,9 +77,9 @@ function renderMapMarkers(issues) {
       const cfg = TYPE_CONFIG[issue.type] || { color: '#f59e0b', label: (issue.type || 'DEFECT').toUpperCase() };
 
       const marker = L.circleMarker([issue.gps.lat, issue.gps.lng], {
-        radius: issue.type === 'route_audit' ? 5 : 8,
+        radius: issue.type === 'route_audit' ? 6 : 9,
         fillColor: cfg.color,
-        color: '#fff',
+        color: '#ffffff',
         weight: 2,
         opacity: 1,
         fillOpacity: 0.9
@@ -88,11 +88,12 @@ function renderMapMarkers(issues) {
       const imgUrl = issue.image ? issue.image.replace(/^\//, '') : null;
 
       marker.bindPopup(`
-        <div style="font-size:12px; color:#111; min-width: 180px;">
-          <b style="color:${cfg.color};">${cfg.label}</b><br>
-          <span style="font-size:11px; color:#555;">${issue.description || ''}</span><br>
-          ${issue.magnitude > 0 ? `<b>G-Force:</b> ${issue.magnitude} m/s²<br>` : ''}
-          ${imgUrl ? `<img src="${imgUrl}" style="width:100%; max-height:120px; object-fit:cover; margin-top:6px; border-radius:4px;" />` : ''}
+        <div style="font-size:12px; color:#111; min-width: 190px; line-height: 1.4;">
+          <div style="font-weight:700; color:${cfg.color}; letter-spacing:0.5px;">${cfg.label}</div>
+          <div style="font-size:11px; color:#555; margin-top:2px;">${issue.description || ''}</div>
+          ${issue.magnitude > 0 ? `<div style="margin-top:2px;"><b>Shock:</b> ${issue.magnitude} m/s²</div>` : ''}
+          <div style="font-size:10px; color:#777; margin-top:2px;">${new Date(issue.timestamp).toLocaleTimeString()}</div>
+          ${imgUrl ? `<img src="${imgUrl}" style="width:100%; max-height:130px; object-fit:cover; margin-top:6px; border-radius:4px; border:1px solid #ddd;" />` : ''}
         </div>
       `);
 
@@ -110,7 +111,14 @@ function renderMapMarkers(issues) {
 function renderSidebar(issues) {
   const container = document.getElementById('issuesList');
   if (!issues || issues.length === 0) {
-    container.innerHTML = '<div class="empty-state">No road issues detected yet. Start riding your scooter!</div>';
+    container.innerHTML = `
+      <div class="empty-state">
+        <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#64748b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="m9 12 2 2 4-4"></path>
+        </svg>
+        <p>No defects recorded yet.<br>Start your ride to detect road issues.</p>
+      </div>`;
     return;
   }
 
@@ -121,22 +129,22 @@ function renderSidebar(issues) {
     const card = document.createElement('div');
     card.className = 'issue-card';
     
-    const cfg = TYPE_CONFIG[issue.type] || { label: (issue.type || 'DEFECT').toUpperCase(), color: '#f59e0b' };
+    const cfg = TYPE_CONFIG[issue.type] || { label: (issue.type || 'DEFECT').toUpperCase(), color: '#f59e0b', badgeBg: 'rgba(245,158,11,0.15)' };
     const timeStr = new Date(issue.timestamp).toLocaleTimeString();
     const gpsStr = (issue.gps && issue.gps.lat) ? `${issue.gps.lat.toFixed(4)}, ${issue.gps.lng.toFixed(4)}` : 'No GPS Fix';
     const imgUrl = issue.image ? issue.image.replace(/^\//, '') : null;
 
     card.innerHTML = `
       <div class="issue-card-header">
-        <span class="severity-tag" style="background-color:${cfg.color}22; color:${cfg.color}; border:1px solid ${cfg.color};">${cfg.label}</span>
+        <span class="severity-tag" style="background-color:${cfg.badgeBg}; color:${cfg.color}; border:1px solid ${cfg.color};">${cfg.label}</span>
         <span class="issue-time">${timeStr}</span>
       </div>
       <div class="issue-info">
         <div><strong>${issue.description || issue.type}</strong></div>
         ${issue.magnitude > 0 ? `<div><strong>Shock:</strong> ${issue.magnitude} m/s²</div>` : ''}
-        <div><strong>Location:</strong> ${gpsStr}</div>
+        <div style="color:var(--text-muted); font-size:11px;">${gpsStr}</div>
       </div>
-      ${imgUrl ? `<img src="${imgUrl}" class="issue-thumb" alt="Defect" />` : ''}
+      ${imgUrl ? `<img src="${imgUrl}" class="issue-thumb" alt="Road Defect" />` : ''}
     `;
 
     card.addEventListener('click', () => {
@@ -168,14 +176,19 @@ document.getElementById('modalClose').addEventListener('click', () => {
 const btn = document.getElementById('btnTrigger');
 if (btn) {
   btn.addEventListener('click', async () => {
-    btn.textContent = 'Capturing...';
+    btn.innerHTML = '<span>Capturing...</span>';
     try {
       await fetch('/api/trigger', { method: 'POST' });
       await fetchIssues();
     } catch (err) {
       console.error(err);
     } finally {
-      btn.textContent = '📸 Manual Flag';
+      btn.innerHTML = `
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+          <circle cx="12" cy="13" r="4"></circle>
+        </svg>
+        <span>Manual Flag</span>`;
     }
   });
 }
