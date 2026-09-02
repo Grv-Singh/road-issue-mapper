@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Road Audit & Issue Mapper</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="app-header">
+    <div class="logo">
+      <span class="icon">🛵</span>
+      <h1>Road Issue Mapper</h1>
+    </div>
+    <div class="status-badge" id="connStatus">Connecting...</div>
+  </header>
+
+  <div class="telemetry-bar">
+    <div class="telemetry-item">
+      <span class="label">GPS Status</span>
+      <span class="val" id="gpsStatus">Waiting Fix...</span>
+    </div>
+    <div class="telemetry-item">
+      <span class="label">Coordinates</span>
+      <span class="val" id="coords">--</span>
+    </div>
+    <div class="telemetry-item">
+      <span class="label">Speed</span>
+      <span class="val" id="speed">0.0 km/h</span>
+    </div>
+    <div class="telemetry-item">
+      <span class="label">Phone Battery</span>
+      <span class="val" id="battery">--%</span>
+    </div>
+    <div class="telemetry-item">
+      <span class="label">Total Issues</span>
+      <span class="val highlight" id="issueCount">0</span>
+    </div>
+    <button class="btn-action" id="btnTrigger">📸 Manual Flag</button>
+  </div>
+
+  <main class="main-layout">
+    <div id="map"></div>
+    
+    <aside class="sidebar">
+      <h2>Detected Road Defects</h2>
+      <div id="issuesList" class="issues-list">
+        <div class="empty-state">No road issues detected yet. Start riding your scooter!</div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- Image Modal -->
+  <div id="imgModal" class="modal">
+    <div class="modal-content">
+      <span class="close-btn" id="modalClose">&times;</span>
+      <img id="modalImg" src="" alt="Issue Snapshot" />
+      <div id="modalDetails" class="modal-details"></div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

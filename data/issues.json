@@ -1,0 +1,19 @@
+[
+  {
+    "id": "manual_1788354801",
+    "timestamp": "2026-09-02T18:43:25",
+    "type": "manual_flag",
+    "severity": "medium",
+    "magnitude": 0.0,
+    "z_accel": 0.0,
+    "gps": {
+      "lat": 26.8897488,
+      "lng": 75.7930813,
+      "speed": 0.0,
+      "altitude": 378.4000244140625,
+      "accuracy": 100.0,
+      "provider": "network"
+    },
+    "image": "/data/images/manual_20260902_184321.jpg"
+  }
+]
