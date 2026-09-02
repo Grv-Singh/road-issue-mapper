@@ -2,6 +2,13 @@ let map;
 let markers = [];
 let issuesData = [];
 
+const TYPE_CONFIG = {
+  pothole_shock: { label: 'POTHOLE JOLT', color: '#ef4444', icon: '⚠️' },
+  garbage_or_debris: { label: 'GARBAGE / DEBRIS', color: '#f97316', icon: '🗑️' },
+  manual_flag: { label: 'MANUAL FLAG', color: '#a855f7', icon: '📸' },
+  route_audit: { label: 'STREET SURVEY', color: '#3b82f6', icon: '📍' }
+};
+
 function initMap() {
   map = L.map('map').setView([26.8897, 75.7930], 14);
 
@@ -46,7 +53,6 @@ async function fetchTelemetry() {
 
 async function fetchIssues() {
   try {
-    // Works on both local server and GitHub Pages statically
     const res = await fetch(`data/issues.json?t=${Date.now()}`);
     const issues = await res.json();
     issuesData = issues;
@@ -68,24 +74,25 @@ function renderMapMarkers(issues) {
   issues.forEach(issue => {
     if (issue.gps && issue.gps.lat && issue.gps.lng) {
       hasValidCoords = true;
+      const cfg = TYPE_CONFIG[issue.type] || { color: '#f59e0b', label: (issue.type || 'DEFECT').toUpperCase() };
+
       const marker = L.circleMarker([issue.gps.lat, issue.gps.lng], {
-        radius: 8,
-        fillColor: issue.severity === 'high' ? '#ef4444' : '#f59e0b',
+        radius: issue.type === 'route_audit' ? 5 : 8,
+        fillColor: cfg.color,
         color: '#fff',
         weight: 2,
         opacity: 1,
-        fillOpacity: 0.85
+        fillOpacity: 0.9
       }).addTo(map);
 
-      // Support relative image path on GitHub Pages
       const imgUrl = issue.image ? issue.image.replace(/^\//, '') : null;
 
       marker.bindPopup(`
-        <div style="font-size:12px; color:#111;">
-          <b>${(issue.type || 'DEFECT').toUpperCase()}</b><br>
-          Severity: ${issue.severity}<br>
-          G-Force: ${issue.magnitude || '0'} m/s²<br>
-          ${imgUrl ? `<img src="${imgUrl}" style="width:180px; height:100px; object-fit:cover; margin-top:5px; border-radius:4px;" />` : ''}
+        <div style="font-size:12px; color:#111; min-width: 180px;">
+          <b style="color:${cfg.color};">${cfg.label}</b><br>
+          <span style="font-size:11px; color:#555;">${issue.description || ''}</span><br>
+          ${issue.magnitude > 0 ? `<b>G-Force:</b> ${issue.magnitude} m/s²<br>` : ''}
+          ${imgUrl ? `<img src="${imgUrl}" style="width:100%; max-height:120px; object-fit:cover; margin-top:6px; border-radius:4px;" />` : ''}
         </div>
       `);
 
@@ -114,17 +121,19 @@ function renderSidebar(issues) {
     const card = document.createElement('div');
     card.className = 'issue-card';
     
+    const cfg = TYPE_CONFIG[issue.type] || { label: (issue.type || 'DEFECT').toUpperCase(), color: '#f59e0b' };
     const timeStr = new Date(issue.timestamp).toLocaleTimeString();
     const gpsStr = (issue.gps && issue.gps.lat) ? `${issue.gps.lat.toFixed(4)}, ${issue.gps.lng.toFixed(4)}` : 'No GPS Fix';
     const imgUrl = issue.image ? issue.image.replace(/^\//, '') : null;
 
     card.innerHTML = `
       <div class="issue-card-header">
-        <span class="severity-tag ${issue.severity}">${issue.type}</span>
+        <span class="severity-tag" style="background-color:${cfg.color}22; color:${cfg.color}; border:1px solid ${cfg.color};">${cfg.label}</span>
         <span class="issue-time">${timeStr}</span>
       </div>
       <div class="issue-info">
-        <div><strong>Shock:</strong> ${issue.magnitude} m/s² (Z: ${issue.z_accel} m/s²)</div>
+        <div><strong>${issue.description || issue.type}</strong></div>
+        ${issue.magnitude > 0 ? `<div><strong>Shock:</strong> ${issue.magnitude} m/s²</div>` : ''}
         <div><strong>Location:</strong> ${gpsStr}</div>
       </div>
       ${imgUrl ? `<img src="${imgUrl}" class="issue-thumb" alt="Defect" />` : ''}
@@ -132,7 +141,7 @@ function renderSidebar(issues) {
 
     card.addEventListener('click', () => {
       if (imgUrl) {
-        showModal(imgUrl, `Detected at ${timeStr} | Shock: ${issue.magnitude} m/s² | ${gpsStr}`);
+        showModal(imgUrl, `${cfg.label} | ${issue.description || ''} | ${gpsStr}`);
       }
       if (issue.gps && issue.gps.lat) {
         map.setView([issue.gps.lat, issue.gps.lng], 17);
