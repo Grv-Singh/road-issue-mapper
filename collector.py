@@ -22,10 +22,13 @@ TELEMETRY_FILE = os.path.join(DATA_DIR, "telemetry.json")
 os.makedirs(IMG_DIR, exist_ok=True)
 
 CAMERA_HOST = "http://10.63.105.80:8888"
-BUMP_THRESHOLD = 3.5          # m/s^2 linear acceleration spike
-BUMP_COOLDOWN = 2.0           # Cooldown between bump triggers (seconds)
-VISION_SCAN_INTERVAL = 3.0    # Scan frame with OpenCV every 3 seconds
-PERIODIC_SURVEY_SEC = 20.0    # Periodic street capture interval
+
+# Motion & Threshold Gates
+MIN_RIDE_SPEED_KMH = 3.5      # Must be moving on scooter (>3.5 km/h) to capture surveys/hazards
+BUMP_THRESHOLD = 4.2          # m/s^2 linear acceleration spike
+BUMP_COOLDOWN = 2.5           # Cooldown between bump triggers (seconds)
+VISION_SCAN_INTERVAL = 4.0    # Scan frame with OpenCV every 4 seconds while moving
+PERIODIC_SURVEY_SEC = 25.0    # Periodic street capture interval while moving
 
 last_bump_time = 0
 last_vision_scan_time = 0
@@ -73,10 +76,14 @@ def extract_gps(gps_raw):
     net = gps_raw.get("network", {})
     target = gps if gps and "latitude" in gps else net
     if target and "latitude" in target:
+        speed_raw = target.get("speed", 0.0)
+        # speed in m/s converted to km/h
+        speed_kmh = round(speed_raw * 3.6, 1) if speed_raw else 0.0
         return {
             "lat": target.get("latitude"),
             "lng": target.get("longitude"),
-            "speed": target.get("speed", 0.0),
+            "speed": speed_raw,
+            "speed_kmh": speed_kmh,
             "altitude": target.get("altitude", 0.0),
             "accuracy": target.get("accuracy", 0.0),
             "provider": "gps" if target == gps else "network"
@@ -98,19 +105,18 @@ def detect_visual_anomalies(img_path):
     gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
     blur = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    # Road median color deviation
     median_val = np.median(blur)
     diff = cv2.absdiff(blur, int(median_val))
-    _, thresh = cv2.threshold(diff, 48, 255, cv2.THRESH_BINARY)
+    _, thresh = cv2.threshold(diff, 50, 255, cv2.THRESH_BINARY)
 
-    # Find distinct contours on the road surface
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
-    # Filter blobs: size between 400 and 25000 pixels (rubble, plastic piles, stones)
-    hazard_blobs = [c for c in contours if 400 < cv2.contourArea(c) < 25000]
-    
-    if len(hazard_blobs) >= 2 or any(cv2.contourArea(c) > 2500 for c in hazard_blobs):
-        return True, "Garbage / Rubble Cluster", min(0.92, 0.6 + len(hazard_blobs) * 0.08)
+    hazard_blobs = [c for c in contours if 500 < cv2.contourArea(c) < 25000]
+
+    # Only high-confidence clusters (> 0.75)
+    if len(hazard_blobs) >= 2 or any(cv2.contourArea(c) > 3000 for c in hazard_blobs):
+        conf = min(0.95, 0.70 + len(hazard_blobs) * 0.05)
+        if conf >= 0.75:
+            return True, "Garbage / Rubble Cluster", conf
 
     return False, None, 0.0
 
@@ -133,12 +139,12 @@ def record_defect(issue_type, severity, description, mag, z_accel, gps, img_name
     issues = load_issues()
     issues.append(entry)
     save_issues(issues)
-    logging.info(f"Recorded [{issue_type}]: {description} at GPS {gps.get('lat') if gps else 'N/A'}")
+    logging.info(f"Recorded [{issue_type}]: {description} (Speed: {gps.get('speed_kmh') if gps else 0} km/h)")
     sync_github()
 
 def run_collector():
     global last_bump_time, last_vision_scan_time, last_survey_time
-    logging.info(f"Visual + Shock Road Audit Daemon active on {CAMERA_HOST}")
+    logging.info(f"Road Audit Daemon active (Speed Gate: {MIN_RIDE_SPEED_KMH} km/h)")
 
     while True:
         try:
@@ -160,12 +166,17 @@ def run_collector():
                     if arr:
                         battery = arr[-1][1][0]
 
+            # Current moving status
+            current_speed_kmh = gps.get("speed_kmh", 0.0) if gps else 0.0
+            is_moving = current_speed_kmh >= MIN_RIDE_SPEED_KMH
+
             # Telemetry state
             telem = {
                 "timestamp": datetime.now().isoformat(),
                 "battery": battery,
                 "gps": gps,
                 "lin_accel": lin_accel_data,
+                "is_moving": is_moving,
                 "status": "online" if sensors else "offline"
             }
             with open(TELEMETRY_FILE, "w") as f:
@@ -176,7 +187,10 @@ def run_collector():
                 ax, ay, az = lin_accel_data
                 mag = math.sqrt(ax*ax + ay*ay + az*az)
 
-                if (mag >= BUMP_THRESHOLD or abs(az) >= BUMP_THRESHOLD) and (now - last_bump_time > BUMP_COOLDOWN):
+                # If moving, trigger at BUMP_THRESHOLD; if idle, ignore accidental small shakes
+                shock_threshold = BUMP_THRESHOLD if is_moving else 7.0
+
+                if (mag >= shock_threshold or abs(az) >= shock_threshold) and (now - last_bump_time > BUMP_COOLDOWN):
                     last_bump_time = now
                     ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
                     img_name = f"bump_{ts_str}.jpg"
@@ -195,8 +209,8 @@ def run_collector():
                             battery=battery
                         )
 
-            # --- 2. OPENCV VISUAL SCAN (Garbage, Rubble, Stones) ---
-            if now - last_vision_scan_time > VISION_SCAN_INTERVAL:
+            # --- 2. OPENCV VISUAL SCAN (Only while moving on scooter) ---
+            if is_moving and (now - last_vision_scan_time > VISION_SCAN_INTERVAL):
                 last_vision_scan_time = now
                 temp_img = os.path.join(IMG_DIR, "current_scan.jpg")
                 if fetch_image(temp_img):
@@ -218,8 +232,8 @@ def run_collector():
                             battery=battery
                         )
 
-            # --- 3. PERIODIC ROUTE SURVEY (Continuous Street Mapping) ---
-            if now - last_survey_time > PERIODIC_SURVEY_SEC:
+            # --- 3. PERIODIC ROUTE SURVEY (Only while moving on scooter) ---
+            if is_moving and (now - last_survey_time > PERIODIC_SURVEY_SEC):
                 last_survey_time = now
                 ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
                 img_name = f"survey_{ts_str}.jpg"
@@ -228,7 +242,7 @@ def run_collector():
                     record_defect(
                         issue_type="route_audit",
                         severity="low",
-                        description="Street Survey Breadcrumb",
+                        description=f"Street Survey ({current_speed_kmh} km/h)",
                         mag=0.0,
                         z_accel=0.0,
                         gps=gps,
@@ -236,7 +250,7 @@ def run_collector():
                         battery=battery
                     )
 
-            time.sleep(0.15)
+            time.sleep(0.2)  # Low CPU polling (5 Hz)
         except Exception as e:
             logging.error(f"Collector loop error: {e}")
             time.sleep(1.0)
