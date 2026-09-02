@@ -184,5 +184,24 @@
     },
     "image": "data/images/survey_20260902_190523.jpg",
     "battery": 18.0
+  },
+  {
+    "id": "defect_1788356125",
+    "timestamp": "2026-09-02T19:05:25.006281",
+    "type": "pothole_shock",
+    "description": "Pothole Jolt: 4.4 m/s\u00b2 shock",
+    "severity": "medium",
+    "magnitude": 4.41,
+    "z_accel": 4.4,
+    "gps": {
+      "lat": 26.893266346250275,
+      "lng": 75.79010236121448,
+      "speed": 0.0,
+      "altitude": 1680.6575392784882,
+      "accuracy": 383.52023,
+      "provider": "gps"
+    },
+    "image": "data/images/bump_20260902_190524.jpg",
+    "battery": 18.0
   }
 ]
