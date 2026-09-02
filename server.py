@@ -104,6 +104,7 @@ class RoadAuditHandler(SimpleHTTPRequestHandler):
                 issues = load_issues()
                 issues.append(entry)
                 save_issues(issues)
+                os.system("nohup bash /home/droid/workspace/projects/road-issue-mapper/sync_github.sh >/dev/null 2>&1 &")
                 
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
