@@ -165,5 +165,24 @@
     },
     "image": "data/images/bump_20260902_190522.jpg",
     "battery": 18.0
+  },
+  {
+    "id": "defect_1788356123",
+    "timestamp": "2026-09-02T19:05:23.718463",
+    "type": "route_audit",
+    "description": "Street Survey Breadcrumb",
+    "severity": "low",
+    "magnitude": 0.0,
+    "z_accel": 0.0,
+    "gps": {
+      "lat": 26.893266346250275,
+      "lng": 75.79010236121448,
+      "speed": 0.0,
+      "altitude": 1680.6575392784882,
+      "accuracy": 383.52023,
+      "provider": "gps"
+    },
+    "image": "data/images/survey_20260902_190523.jpg",
+    "battery": 18.0
   }
 ]
